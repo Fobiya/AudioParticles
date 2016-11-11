@@ -103,8 +103,6 @@ body {
 	overflow: hidden;
 	height: 100vh;
 	width: 100vw;
-	-webkit-filter: blur(2px) saturate(120%);
-					filter: blur(2px) saturate(120%);
 }
 
 #title {

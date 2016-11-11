@@ -4,16 +4,9 @@
 	
 })(function(window,document,vec2){
 	
-	var canvas, ctx,
-			dimensions, center,
-			particles, props, 
-			audio, audioCtx, source, tick, 
-      background, title, gui,
-      baseURL, fileNames, songTitles, currentSong,
-			analyser, bufferLen, freqData, btnPlay, globalMovement;
-	
 	var Particle = (function(){
-		function Particle(index){
+		function Particle(index, parent){
+			this.parent = parent;
 			this.index = index;
 			this.velocity = new Vector2(3 - Math.random() * 6,0);
 			this.minSize = 5;
@@ -23,18 +16,18 @@
 	})();
 	
 	Particle.prototype.init = function(){
-		this.freqVal = freqData[this.index] * 0.01;
+		this.freqVal = this.parent.freqData[this.index] * 0.01;
 		this.size = (this.freqVal * 30) + this.minSize;
-		this.position = new Vector2(Math.random() * dimensions.x, dimensions.y + this.size);
+		this.position = new Vector2(Math.random() * this.parent.dimensions.x, this.parent.dimensions.y + this.size);
 	};
 	
 	Particle.prototype.update = function(){
-		this.freqVal = freqData[this.index] * 0.01;
+		this.freqVal = this.parent.freqData[this.index] * 0.01;
 		
 		this.size = (this.freqVal * 30) + this.minSize;
 		this.offset = this.size/2;
 		
-		this.hue = ((this.index/bufferLen) * 360) + 120 + tick / 6;
+		this.hue = ((this.index/this.parent.bufferLen) * 360) + 120 + this.parent.tick / 6;
 		this.saturation = this.freqVal * 35;
 		this.alpha = this.freqVal * 0.3;
 		
@@ -42,7 +35,6 @@
 		
 		this.lift = Math.pow(this.freqVal,3);
 		
-		this.position.add(globalMovement);
 		this.position.subY(this.lift);
 		this.position.add(this.velocity);
 		
@@ -50,55 +42,102 @@
 	};
 	
 	Particle.prototype.checkBounds = function(){
-		if(this.position.y < -this.size || this.position.x < -this.size || this.position.x > dimensions.x + this.size){
+		if(this.position.y < -this.size || this.position.x < -this.size || this.position.x > this.parent.dimensions.x + this.size){
 			this.init();
 		}
 	};
 	
-  function initAudio(){
-		audio = document.getElementById('audio');
-		audioCtx = new AudioContext();
+	var App = (function(){
+		function App(){
+			this.tick = 0;
+			this.currentSong = 1;
+			this.globalMovement = new vec2();
+			this.initCanvas();
+			this.initUI();
+			this.initAudio();
+			this.loadAudio();
+			this.populate();
+			this.render();
+		}
+		return App;
+	})();
+	
+	App.prototype.initCanvas = function(){
+		this.canvas = document.getElementById('canvas');
+		this.ctx = this.canvas.getContext('2d');
+		this.dimensions = {};
+		this.resize();
+	};
+	
+	App.prototype.resize = function(){
+		this.canvas.width = this.dimensions.x = window.innerWidth;
+		this.canvas.height = this.dimensions.y = window.innerHeight;
+	};
+	
+	App.prototype.initUI = function(){
+    var self = this;
+    this.background = document.getElementById('background');
+    this.title = document.getElementById('title');
+    this.btnPlay = document.getElementById('check-audio-toggle');
+		this.gui = new dat.GUI();
+		this.switchSong = this.gui.add(this,'currentSong').min(1).max(4).step(1);
+		this.switchSong.onFinishChange(function(){
+			self.loadAudio();
+		});
+	};
+	
+	App.prototype.initAudio = function(){
+    var self = this;
+		this.baseURL = 'http://www.seanalexanderfree.com/codepen/audio/';
+    this.fileNames = ['dmwaltz.mp3', 'nocturne92.mp3', 'mozart25.mp3', 'trista.mp3'];
+    this.songTitles = ['Dmitri Shostakovich - Waltz No. 2', 'Frederic Chopin - Nocturne op. 9 no. 2','Mozart - Symphony no. 25','Heitor Villa-Lobos - Tristorosa'];
 		
-		analyser = audioCtx.createAnalyser();
-		source = audioCtx.createMediaElementSource(audio);
+    this.audio = document.getElementById('audio');
+    this.audio.addEventListener('ended', function(){
+      self.audio.currentTime = 0;
+      self.audio.pause();
+      self.btnPlay.checked = false;
+      self.currentSong = self.currentSong < 4 ? self.currentSong + 1 : 0;
+      self.loadAudio();
+    }); 
+		this.audioCtx = new AudioContext();
 		
-		source.connect(analyser);
-		analyser.connect(audioCtx.destination);
+		this.analyser = this.audioCtx.createAnalyser();
+		this.source = this.audioCtx.createMediaElementSource(this.audio);
 		
-		bufferLen = analyser.frequencyBinCount;
-		freqData = new Uint8Array(bufferLen);
+		this.source.connect(this.analyser);
+		this.analyser.connect(this.audioCtx.destination);
+		
+		this.bufferLen = this.analyser.frequencyBinCount;
+		this.freqData = new Uint8Array(this.bufferLen);
+	};
+	
+	App.prototype.loadAudio = function(){
+    var self = this;
     
-  }
-  
-	function loadAudio(index){
+    this.btnPlay.classList.add('disabled');
+    this.background.classList.add('loading');
+		
 		var request = new XMLHttpRequest();
     
-    btnPlay.classList.add('disabled');
-    background.classList.add('loading');
-    title.innerHTML = songTitles[index];
-    
-		request.open('GET', baseURL + fileNames[index], true);
+		request.open('GET', this.baseURL + this.fileNames[this.currentSong - 1], true);
 		request.responseType = 'blob';
 
 		request.onload = function() {
-      background.classList.remove('loading');
-			btnPlay.classList.remove('disabled');
+      self.title.innerHTML = self.songTitles[self.currentSong - 1];
+      self.background.classList.remove('loading');
+			self.btnPlay.classList.remove('disabled');
       
-			audio.src = window.URL.createObjectURL(request.response);
-		  audio.play();
-      audio.addEventListener('ended', function(){
-        audio.currentTime = 0;
-				audio.pause();
-        btnPlay.checked = false;
-      }); 
+			self.audio.src = window.URL.createObjectURL(request.response);
+		  self.audio.play();
       
-			btnPlay.checked = true;
-			btnPlay.onchange = function(e){
+			self.btnPlay.checked = true;
+			self.btnPlay.onchange = function(e){
 				if(this.checked){
-					audio.play();
+					self.audio.play();
 				}
 				else{
-					audio.pause();
+					self.audio.pause();
 				}
 			};
 		}
@@ -106,80 +145,48 @@
 		request.send();
 	}
 	
-	function populate(){
-		particles = [];
-		for(var i = 0; i < bufferLen; i++){
-			particles.push(new Particle(i));
+	App.prototype.populate = function(){
+		this.particles = [];
+		for(var i = 0; i < this.bufferLen; i++){
+			this.particles.push(new Particle(i, this));
 		}
-	}
+		console.log('populated');
+	};
 	
-	function resize(){
-		canvas.width = dimensions.x = window.innerWidth;
-		canvas.height = dimensions.y = window.innerHeight;
-		center = new Vector2(dimensions.x/2,dimensions.y/2);
-	}
-	
-	function draw(){
-		ctx.clearRect(0,0,dimensions.x,dimensions.y);
-		ctx.save();
-		for(var i = 0, len = particles.length; i < len; i++){
-			var particle = particles[i];
+	App.prototype.draw = function(){
+		this.ctx.clearRect(0,0,this.dimensions.x,this.dimensions.y);
+		this.ctx.save();
+		for(var i = 0, len = this.particles.length; i < len; i++){
+			var particle = this.particles[i];
 			particle.update();
+			particle.position.add(this.globalMovement);
       if(particle.freqVal > 0){
-        ctx.beginPath();
-        ctx.fillStyle = particle.fill;
-        ctx.beginPath();
-        ctx.arc(particle.position.x, particle.position.y, particle.size, 0, Math.PI*180);
-        ctx.fill();
-        ctx.closePath();
+        this.ctx.beginPath();
+        this.ctx.fillStyle = particle.fill;
+        this.ctx.beginPath();
+        this.ctx.arc(particle.position.x, particle.position.y, particle.size, 0, Math.PI*180);
+        this.ctx.fill();
+        this.ctx.closePath();
       }
 		}
-		ctx.restore();
-	}
+		this.ctx.restore();
+	};
 	
-	function render(){
-		tick++;
-		globalMovement.x = Math.sin(tick * 0.01) * 2;
-		analyser.getByteFrequencyData(freqData);
-		draw();
-		window.requestAnimationFrame(render);
-	}
+	App.prototype.render = function(){
+		var self = this;
+		this.tick++;
+		this.globalMovement.x = Math.sin(this.tick * 0.01) * 2;
+		this.analyser.getByteFrequencyData(this.freqData);
+		this.draw();
+		window.requestAnimationFrame(self.render.bind(self));
+	};
 	
-	function init(){
-		canvas = document.getElementById('canvas');
-		ctx = canvas.getContext('2d');
-		dimensions = {};
-    
-    background = document.getElementById('background');
-    title = document.getElementById('title');
-    btnPlay = document.getElementById('check-audio-toggle');
-		tick = 0;
-    
-		globalMovement = new vec2();
-    
-    baseURL = 'http://www.seanalexanderfree.com/codepen/audio/';
-    fileNames = ['dmwaltz.mp3', 'nocturne92.mp3', 'mozart25.mp3', 'trista.mp3'];
-    songTitles = ['Dmitri Shostakovich - Waltz No. 2', 'Frederic Chopin - Nocturne op. 9 no. 2','Mozart - Symphony no. 25','Heitor Villa-Lobos - Tristorosa'];
-    currentSong = {
-      Song: 1
-    };
-    
-    gui = new dat.GUI();
-    var switchSong = gui.add(currentSong,'Song').min(1).max(4).step(1);
-    switchSong.onFinishChange(function(){
-      audio.pause();
-      loadAudio(currentSong.Song - 1);
-    });
-		resize();
-    initAudio();
-		loadAudio(currentSong.Song - 1);
-		populate();
-		render();
-	}
-	
-	window.onload = init;
-	
-	window.onresize = resize;
+	window.onload = function(){
+		var app = new App;
+		window.onresize = function(){
+			app.resize();
+		}
+	};
 	
 	window.requestAnimationFrame = (function(){
 	return  window.requestAnimationFrame       ||
