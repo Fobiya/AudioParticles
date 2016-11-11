@@ -53,6 +53,7 @@ body {
 }
 #loader #loading-text {
 	position: absolute;
+	top: -30px;
 	width: 100%;
 	font-size: 1.8em;
 	font-family: "Josefin Sans", sans-serif;
